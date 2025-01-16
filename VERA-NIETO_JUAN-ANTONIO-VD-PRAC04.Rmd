@@ -1,0 +1,878 @@
+---
+title: "VD-PRAC04"
+author: "JUAN ANTONIO VERA"
+date: "`r Sys.Date()`"
+
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r}
+
+rm(list = ls())
+
+if(!require(dplyr)) {
+    install.packages("dplyr")
+}
+
+
+if(!require(ggplot2)) {
+    install.packages("ggplot2")
+}
+library(ggplot2)
+
+if(!require(fmsb)) {
+    install.packages("fmsb")
+}
+
+library(fmsb)
+
+if(!require(corrplot)) {
+    install.packages("corrplot")
+}
+
+library(corrplot)
+
+
+if(!require(reshape2)) {
+    install.packages("reshape2")
+}
+
+library(reshape2)
+
+
+if(!require(knitr)) {
+    install.packages("knitr")
+  }
+library(knitr)
+
+if(!require(reshape2)) {
+    install.packages("reshape2")
+  }
+
+library(reshape2)
+
+
+library(tidyr)
+
+
+```
+# 1.  Introducció
+
+
+En aquest document es realitza una exploració dels resultats de
+l'informe PISA durant aquests darrers anys a Catalunya.
+
+L'objectiu serà trobar tendències sobre l'evolució dels resultats i possibles
+diferències entre col·lectius
+
+#2. Anàl·lisi Exploratri de Dades (EDA)
+
+L'objectiu és realitzar una anàlisi exploratòria de dades (EDA) del
+dataset «Avaluació de quart d'Educació Secundària Obligatòria» disponible
+a https://datos.gob.es/gl/catalogo/a09002970-evaluacion-de-cuarto-de-educacion-secundaria-
+obligatoria. Farem un primer estudi sobre la normalitat de les dades
+que es presenten.
+
+Per simplificar, renombrarem l'arxiu descarregat com a notes.csv
+
+
+#Càrrega i organitzacó de les dades
+
+A través de les següents ordres carreguem les dades de l'arxiu notes.csv
+al data frame df, crearem algunes noves columnes categòriques
+que ens permetin una millor visualització dels resultats
+
+```{r}
+
+## Llegim el dataset de notes
+
+df<-read.csv("data/raw/notes.csv")
+dataset<-df
+```
+
+Fem una exploració de possibles valors nuls
+
+```{r}
+
+
+
+n.na <- function(x){ return (sum(is.na(x)==TRUE))}
+ sapply( df[,4:ncol(df)],n.na) %>% kable( caption="NAs de cada variable")
+
+
+```
+El dataset conté el resultat de tots els alumnes de 4 de la ESO. Trobem que hi han
+moltes columnes amb NAs perque es corresponen a matèries que l'alumne no s'ha avaluat
+perquè no li corresponen avaluació.
+
+Per tot això, es consideren normal, però no es tindran en compte per extreure
+informació estadística
+
+# Resumen y visualización de la composición los datos
+
+A continuació es mostren algunes ordres que ens ajuden a entendre la composició
+de la nostra base de dades. Amb les ordres head i tails ens permeten veure les
+primeres i últimes 6 files del data frame. L'ordre names observem els noms de l
+es columnes de la matriu. L'ordre str llista el conjunt de variables que
+es troben a la base de dades juntament amb algunes dades particulars que
+destaquen el nombre i la naturalesa de les variables. Finalment, la comanda
+summary vindria a ser la més útil i ens ofereix un resum de les variables tant
+numèriques com no numèriques, les seves freqüències, quantitat, mitjana,
+mitjana i valors màxims i mínims.
+```{r}
+
+head(df)
+```
+
+```{r}
+
+tail(df)
+```
+
+
+
+```{r}
+
+names(df)
+```
+
+```{r}
+str(df)
+```
+
+```{r}
+
+summary(df)
+
+```
+
+També podem obtenir una taula resum amb les notes per tipus de centre i en funció del gènere
+
+```{r}
+dades <- df
+
+# Seleccionar les assignatures rellevants i altres columnes
+dades_seleccionades <- dades %>% select(TIPUS_CENTRE = NATURALESA, GENERE, PCAT, PCAST, PANG, PCIEN, PFRAN, PALE, PMAT)
+
+# Calcular les mitjanes per tipus de centre i gènere per a cada assignatura
+mitjanes_centre_genere <- dades_seleccionades %>%
+  group_by(TIPUS_CENTRE, GENERE) %>%
+  summarise(across(PCAT:PMAT, ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = PCAT:PMAT, names_to = "Assignatura", values_to = "Mitjana")
+
+# Crear la taula
+taula_resultats <- mitjanes_centre_genere %>%
+  pivot_wider(names_from = "Assignatura", values_from = "Mitjana")
+
+# Mostrar la taula
+print(taula_resultats)
+
+```
+
+
+Tot i ser útil, farem una exploració més visual de les dades
+
+# Tipus d'estudiants avaluats
+
+El resultats de l'informe PISA son fruït de les proves
+realitzades als diferents centres de 4 ESO de Catalunya.
+
+Tenim aquesta distribució per tipus de centre
+
+```{r}
+
+
+# Carregar les llibreries necessàries
+
+# Calcular la proporció d'estudiants en centres públics i privats
+proporcions_centre <- dataset %>%
+  group_by(NATURALESA) %>%
+  summarise(Compte = n())
+
+# Crear el gràfic de sectors
+ggplot(proporcions_centre, aes(x = "", y = Compte, fill = NATURALESA)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar(theta = "y") +
+  labs(title = "Proporció d'Estudiants en Centres Públics i Privats",
+       x = "",
+       y = "",
+       fill = "Tipus de Centre") +
+  theme_minimal()
+
+```
+
+
+
+#Evolució dels resultats de les proves
+
+
+A continuació podem veure l'evolució dels resultats de les diferents
+assignatures al llarg del temps:
+```{r}
+
+
+# Carregar les dades (adaptar aquest pas segons com tinguis les dades)
+# Assumeixo que tens les dades en un fitxer CSV
+dades<-df
+# Calcular les mitjanes anuals per a cada assignatura
+mitjanes_anuals <- dades %>%
+  group_by(ANY) %>%
+  summarise(PCAT = mean(PCAT, na.rm = TRUE),
+            PCAST = mean(PCAST, na.rm = TRUE),
+            PANG = mean(PANG, na.rm = TRUE),
+            PCIEN = mean(PCIEN, na.rm = TRUE),
+            PFRAN = mean(PFRAN, na.rm = TRUE),
+            PALE = mean(PALE, na.rm = TRUE),
+            PMAT = mean(PMAT, na.rm = TRUE))
+
+
+mitjanes_long <- mitjanes_anuals %>%
+  pivot_longer(cols = PCAT:PMAT, names_to = "assignatura", values_to = "puntuacio")
+
+# Crear la gràfica de línies amb l'evolució per anys
+ggplot(mitjanes_long, aes(x = ANY, y = puntuacio, color = assignatura)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(title = "Evolució de les Mitjanes de les Notes per Assignatura",
+       x = "Any",
+       y = "Mitjana de les Notes") +
+  scale_color_manual(name = "Assignatura", 
+                     values = c("PCAT" = "red", "PCAST" = "blue", "PANG" = "green", "PCIEN" = "purple", "PFRAN" = "orange", "PALE" = "cyan", "PMAT" = "magenta")) +
+  theme_minimal()
+
+```
+
+Tot i complicar una mica la visualització, afegirem la perspectiva de gènere
+
+
+```{r}
+
+# Carregar les dades (adaptar aquest pas segons com tinguis les dades)
+# Assumeixo que tens les dades en un fitxer CSV
+
+
+# Calcular les mitjanes anuals per a cada assignatura diferenciant per gènere
+mitjanes_anuals <- dades %>%
+  group_by(ANY, GENERE) %>%
+  summarise(PCAT = mean(PCAT, na.rm = TRUE),
+            PCAST = mean(PCAST, na.rm = TRUE),
+            PANG = mean(PANG, na.rm = TRUE),
+            PCIEN = mean(PCIEN, na.rm = TRUE),
+            PFRAN = mean(PFRAN, na.rm = TRUE),
+            PALE = mean(PALE, na.rm = TRUE),
+            PMAT = mean(PMAT, na.rm = TRUE))
+
+# Reorganitzar les dades al format llarg per ggplot2
+
+
+mitjanes_long <- mitjanes_anuals %>%
+  pivot_longer(cols = PCAT:PMAT, names_to = "assignatura", values_to = "puntuacio")
+
+# Crear la gràfica de línies amb l'evolució per anys diferenciant per gènere
+ggplot(mitjanes_long, aes(x = ANY, y = puntuacio, color = assignatura, linetype = GENERE)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  labs(title = "Evolució de les Mitjanes de les Notes per Assignatura i Gènere",
+       x = "Any",
+       y = "Mitjana de les Notes") +
+  scale_color_manual(name = "Assignatura", 
+                     values = c("PCAT" = "red", "PCAST" = "blue", "PANG" = "green", "PCIEN" = "purple", "PFRAN" = "orange", "PALE" = "cyan", "PMAT" = "magenta")) +
+  theme_minimal()
+
+```
+
+
+Podem observar l'evolució de les puntuacions per cada assignatura al llarg dels 
+diferenciant el comportament per gènere. La tendència en el resultat pels
+dos gèneres és la mateix, que no la competència en cada una d'elles perquè, 
+com ja es pot veurà amb més detall, hi una "blocs" d'assignatures que on les noies
+treuen millor nota que els nois, i al revès.
+
+Podem destacar:
+
+- Mínima recuperació de MATEMÀTIQUES, tot i això amb resultats bastant dolents
+- Creixement continuar del resultat en ALEMANY.
+- Recuperació de la tendència de millora en el coneixement d'ANGLÈS
+- Forta davallada en la tendència de coneixement de CASTELLÀ i CATALÀ
+- Millors resultats en assignatures d'idiomes per les noies i a les de ciències
+als nois
+
+
+# Evolució de les qualificacions en funció del tipus de centre
+
+```{r}
+
+# Carregar les llibreries necessàries
+
+# Carregar el dataset
+dataset<-df
+
+# Calcular les mitjanes de les notes per gènere
+mitjanes_genere <- dataset %>%
+  group_by(GENERE) %>%
+  summarise(PCAT = mean(PCAT, na.rm = TRUE),
+            PCAST = mean(PCAST, na.rm = TRUE),
+            PANG = mean(PANG, na.rm = TRUE),
+            PCIEN = mean(PCIEN, na.rm = TRUE),
+            PMAT = mean(PMAT, na.rm = TRUE))
+
+# Transformar les dades a format llarg
+mitjanes_genere_long <- mitjanes_genere %>%
+  pivot_longer(cols = c("PCAT", "PCAST", "PANG", "PCIEN", "PMAT"), 
+               names_to = "Assignatura", values_to = "Mitjana")
+
+# Crear el gràfic de barres comparatives
+ggplot(mitjanes_genere_long, aes(x = Assignatura, y = Mitjana, fill = GENERE)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Comparació del Rendiment per Gènere en Diferents Àrees",
+       x = "Assignatura",
+       y = "Mitjana de les Notes",
+       fill = "Gènere") +
+  theme_minimal()
+
+
+```
+
+```{r}
+# Carregar les llibreries necessàries
+
+
+# Calcular les mitjanes anuals per a cada assignatura i tipus de centre
+mitjanes_anuals <- dataset %>%
+  group_by(ANY, NATURALESA) %>%
+  summarise(PCAT = mean(PCAT, na.rm = TRUE),
+            PCAST = mean(PCAST, na.rm = TRUE),
+            PANG = mean(PANG, na.rm = TRUE),
+            PCIEN = mean(PCIEN, na.rm = TRUE),
+            PMAT = mean(PMAT, na.rm = TRUE))
+
+# Crear la gràfica de línies
+ggplot(mitjanes_anuals) +
+  geom_line(aes(x = ANY, y = PCAT, color = "PCAT", linetype = NATURALESA), size = 1) +
+  geom_point(aes(x = ANY, y = PCAT, color = "PCAT", shape = NATURALESA), size = 2) +
+  geom_line(aes(x = ANY, y = PCAST, color = "PCAST", linetype = NATURALESA), size = 1) +
+  geom_point(aes(x = ANY, y = PCAST, color = "PCAST", shape = NATURALESA), size = 2) +
+  geom_line(aes(x = ANY, y = PANG, color = "PANG", linetype = NATURALESA), size = 1) +
+  geom_point(aes(x = ANY, y = PANG, color = "PANG", shape = NATURALESA), size = 2) +
+  geom_line(aes(x = ANY, y = PCIEN, color = "PCIEN", linetype = NATURALESA), size = 1) +
+  geom_point(aes(x = ANY, y = PCIEN, color = "PCIEN", shape = NATURALESA), size = 2) +
+  geom_line(aes(x = ANY, y = PMAT, color = "PMAT", linetype = NATURALESA), size = 1) +
+  geom_point(aes(x = ANY, y = PMAT, color = "PMAT", shape = NATURALESA), size = 2) +
+  labs(title = "Evolució de les Mitjanes de les Notes per Tipus de Centre",
+       x = "Any",
+       y = "Mitjana de les Notes",
+       color = "Assignatura",
+       linetype = "Tipus de Centre",
+       shape = "Tipus de Centre") +
+  scale_color_manual(values = c("PCAT" = "red", "PCAST" = "blue", "PANG" = "green", "PCIEN" = "purple", "PMAT" = "orange")) +
+  scale_linetype_manual(values = c("Privada" = "solid", "Pública" = "dashed")) +
+  scale_shape_manual(values = c("Privada" = 16, "Pública" = 17)) +
+  theme_minimal()
+
+```
+
+Podem veure que l'evolució és semblant en les notes tant en els centres privats com en els centres públics, tot i que els resultats son millors en els centres privats.
+
+## Situació de les ciencies
+
+```{r}
+
+
+
+# Seleccionar només les columnes rellevants
+dades_seleccionades <- df %>% select(GENERE, PMAT, PCIEN)
+
+dades_long <- dades_seleccionades %>%
+  pivot_longer(cols = PMAT:PCIEN, names_to = "assignatura", values_to = "puntuacio")
+
+# Crear el boxplot agrupat per assignatura
+ggplot(dades_long, aes(x = assignatura, y = puntuacio, fill = GENERE)) +
+  geom_boxplot() +
+  labs(title = "Boxplot Agrupat per PMAT i PCIEN per Gènere",
+       x = "Assignatura",
+       y = "Puntuació") +
+  theme_minimal()
+
+
+```
+
+#Interpretació de la visualització:
+- Observem una concentració més gran dels resultats en les notes de CIÈNCIES, no observat en el cas de MATEMÀTIQUES. 
+- Aquesta tendència s'observa en els dos gèneres
+- Millor resultat en el cas dels nois que de les noies
+
+La concentració de les notes ens indica una assoliment més homogeni de coneixements en CIÈNCIES que en MATEMÀTIQUES
+
+
+##Situació dels idiomes
+
+A continuació podem veure una visualització de la concentració dels resultats 
+dels diferents idiomes.
+```{r}
+
+
+# Seleccionar només les columnes rellevants
+dades_idiomes <- dades %>% select(GENERE, PFRAN, PANG, PALE)
+
+# Reorganitzar les dades per fer-les llargues (long format)
+
+dades_long <- dades_idiomes %>%
+  pivot_longer(cols = PFRAN:PALE, names_to = "assignatura", values_to = "puntuacio")
+
+# Crear el boxplot agrupat per assignatura amb llegenda personalitzada
+ggplot(dades_long, aes(x = assignatura, y = puntuacio, fill = GENERE)) +
+  geom_boxplot() +
+  scale_x_discrete(labels = c("PALE" = "Alemany", "PANG" = "Anglès", "PFRAN" = "Francès")) +
+  labs(title = "Boxplot Agrupat per Assignatures d'Idiomes i Gènere",
+       x = "Assignatura",
+       y = "Puntuació") +
+  theme_minimal()
+
+```
+
+
+Per l'exploració visual inicial:
+1. Trobem una concentració de notes més importants a Alemany.
+2. Trobem també que, en general, es treuen millors notes a Alemany
+3. A Francès trobem una disparitat més gran de notes
+4. S'obtenen millors notes en general a Anglès que d'altres assignatures
+
+
+##Relació entre assignatures
+
+En aquest apartat volem conèixer si existeix alguna relació entre els
+resultats obtinguts en una matèria influeixen en un altre.
+
+Per fer-ho, faren una matriu de correlació.
+
+
+
+```{r}
+
+# Convertir la variable NATURALESA a numèrica
+dataset <- dataset %>%
+  mutate(NATURALESA_NUM = ifelse(NATURALESA == "Privada", 1, 0))
+
+# Seleccionar les columnes de les assignatures i la nova columna numèrica de NATURALESA
+dades_correlacio <- dataset[, c("PCAT", "PCAST", "PANG", "PCIEN", "PMAT", "NATURALESA_NUM")]
+
+# Calcular la matriu de correlació
+correlacions <- cor(dades_correlacio, use = "complete.obs")
+
+# Mostrar la matriu de correlació
+print(correlacions)
+
+# Visualitzar la matriu de correlació
+corrplot(correlacions, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+
+```
+
+
+Podem observar que:
+
+1. **PCAT**:
+   - Correlació forta amb **PCAST** (0.674).
+   - Correlació moderada amb **PANG** (0.608).
+   - Correlació moderada amb **PCIEN** (0.568).
+   - Correlació moderada amb **PMAT** (0.536).
+
+2. **PCAST**:
+   - Correlació forta amb **PCAT** (0.674).
+   - Correlació forta amb **PANG** (0.621).
+   - Correlació moderada amb **PCIEN** (0.557).
+   - Correlació moderada amb **PMAT** (0.551).
+
+3. **PANG**:
+   - Correlació moderada amb **PCAT** (0.608).
+   - Correlació forta amb **PCAST** (0.621).
+   - Correlació forta amb **PCIEN** (0.628).
+   - Correlació moderada amb **PMAT** (0.599).
+
+4. **PCIEN**:
+   - Correlació moderada amb **PCAT** (0.568).
+   - Correlació moderada amb **PCAST** (0.557).
+   - Correlació forta amb **PANG** (0.628).
+   - Correlació forta amb **PMAT** (0.641).
+
+5. **PMAT**:
+   - Correlació moderada amb **PCAT** (0.536).
+   - Correlació moderada amb **PCAST** (0.551).
+   - Correlació moderada amb **PANG** (0.599).
+   - Correlació forta amb **PCIEN** (0.641).
+
+Podem observar que hi ha correlacions fortes i moderades entre les diferents assignatures. Aquestes correlacions suggereixen que les notes en una assignatura poden influir en les notes d'altres assignatures. Per exemple, les notes en ciències (**PCIEN**) tenen una correlació forta amb les notes en matemàtiques (**PMAT**), el que indica que els alumnes que obtenen bones notes en ciències també tendeixen a obtenir bones notes en matemàtiques.
+Les correlacions dèbils entre les notes de les assignatures i el tipus de centre suggereixen que el tipus de centre (Privada o Pública) té una influència menor en les notes dels alumnes en les assignatures analitzades.
+
+Tot i això, les notes mitjanes de les assignatures en el centres privats son més grans.
+
+# Distribució de les qualificacions 
+
+```{r}
+
+# Carregar les llibreries necessàries
+
+dataset<-df
+
+
+# Transformar el dataset a format llarg per utilitzar amb ggplot2
+dades_llarg <- dataset %>%
+  pivot_longer(cols = c("PCAT", "PCAST", "PANG", "PCIEN", "PMAT"), 
+               names_to = "Assignatura", values_to = "Notes")
+
+# Crear el gràfic de boxplot
+ggplot(dades_llarg, aes(x = Assignatura, y = Notes, fill = Assignatura)) +
+  geom_boxplot() +
+  labs(title = "Distribució de les Notes per Assignatura",
+       x = "Assignatura",
+       y = "Notes") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+```
+
+
+#Distribució de les notes
+
+En aquest apartat volem examinar la distriució de les notes per les diferents
+assignatures. 
+
+```{r}
+# Carregar las librerías necesarias
+
+
+# Carregar el dataset
+
+# Transformar el dataset a formato largo para usar con ggplot2
+dades_llarg <- dataset %>%
+  pivot_longer(cols = c("PCAT", "PCAST", "PANG", "PCIEN", "PMAT"), 
+               names_to = "Asignatura", values_to = "Puntajes")
+
+# Crear el gráfico de histogramas
+ggplot(dades_llarg, aes(x = Puntajes, fill = Asignatura)) +
+  geom_histogram(binwidth = 1, position = "dodge", color = "green") +
+  facet_wrap(~ Asignatura, scales = "free_x") +
+  labs(title = "Distribución de los Puntajes por Asignatura",
+       x = "Puntajes",
+       y = "Frecuencia") +
+  scale_fill_manual(values = c("PCAT" = "red", "PCAST" = "blue", "PANG" = "green", "PCIEN" = "purple", "PMAT" = "orange")) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+Com a comentaris:
+
+- Mateix tipus de distribució i concentració en PCAT i PCAST, a on és més fàcil
+arribar al notable
+
+
+
+
+```{r}
+
+# Carregar les llibreries necessàries
+
+
+# Carregar el dataset
+# Calcular les mitjanes per a cada assignatura
+mitjanes <- colMeans(dataset[, c("PCAT", "PCAST", "PANG", "PCIEN", "PMAT")], na.rm = TRUE)
+
+# Preparar les dades per al gràfic de radar
+dades_radar <- data.frame(
+  row.names = c("Mitjana"),
+  PCAT = mitjanes["PCAT"],
+  PCAST = mitjanes["PCAST"],
+  PANG = mitjanes["PANG"],
+  PCIEN = mitjanes["PCIEN"],
+  PMAT = mitjanes["PMAT"]
+)
+
+# Afegir una fila amb els valors màxims per a cada assignatura (per escalar el gràfic)
+dades_radar <- rbind(rep(max(dades_radar), ncol(dades_radar)), rep(0, ncol(dades_radar)), dades_radar)
+
+# Crear el gràfic de radar
+radarchart(dades_radar,
+           pcol = rgb(0.2, 0.5, 0.5, 0.9),  # Color de la línia
+           pfcol = rgb(0.2, 0.5, 0.5, 0.5),  # Color de farcit
+           plwd = 2,  # Amplada de la línia
+           cglcol = "grey",  # Color de les línies de la graella
+           cglty = 1,  # Tipus de línia de la graella
+           axislabcol = "grey",  # Color de les etiquetes dels eixos
+           caxislabels = seq(0, max(dades_radar), by = 10),  # Etiquetes dels eixos
+           title = "Gràfic de Radar del Rendiment en Assignatures"
+)
+
+```
+#Comparación del Rendimiento por Género en Diferentes Áreas
+
+Podem veure amb la següent gràfica el rendiment per gènere 
+en les diferents assignatures
+
+
+```{r}
+
+
+
+# Carregar el dataset
+
+# Calcular las medias de las notas por género
+medias_genero <- dataset %>%
+  group_by(GENERE) %>%
+  summarise(PMAT = mean(PMAT, na.rm = TRUE),
+            PANG = mean(PANG, na.rm = TRUE),
+            PCIEN = mean(PCIEN, na.rm = TRUE))
+
+# Transformar los datos a formato largo
+medias_genero_long <- medias_genero %>%
+  pivot_longer(cols = c("PMAT", "PANG", "PCIEN"), 
+               names_to = "Asignatura", values_to = "Media")
+
+# Crear el gráfico de barras comparativas
+ggplot(medias_genero_long, aes(x = Asignatura, y = Media, fill = GENERE)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Comparación del Rendimiento por Género en Diferentes Áreas",
+       x = "Asignatura",
+       y = "Media de las Notas",
+       fill = "Género") +
+  theme_minimal()
+
+
+```
+
+```{r}
+
+
+# Calcular les mitjanes anuals per a cada assignatura, excepte PCIEN
+mitjanes_anuals <- dades %>%
+  group_by(ANY) %>%
+  summarise(PCAT = mean(PCAT, na.rm = TRUE),
+            PCAST = mean(PCAST, na.rm = TRUE),
+            PANG = mean(PANG, na.rm = TRUE),
+            PFRAN = mean(PFRAN, na.rm = TRUE),
+            PALE = mean(PALE, na.rm = TRUE),
+            PMAT = mean(PMAT, na.rm = TRUE))
+
+# Reorganitzar les dades al format llarg per ggplot2
+mitjanes_long <- gather(mitjanes_anuals, assignatura, puntuacio, PCAT:PMAT)
+
+# Crear el heatmap
+ggplot(mitjanes_long, aes(x = ANY, y = assignatura, fill = puntuacio)) +
+  geom_tile() +
+    scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
+
+  labs(title = "Heatmap de les Notes per Assignatura al llarg dels Anys",
+       x = "Any",
+       y = "Assignatura",
+       fill = "Mitjana de les Notes") +
+  theme_minimal()
+
+```
+
+
+
+
+
+Aquest mapa de calor ens indica clarament l'evolució que han tingut
+les diferents puntuacions al llarg del temps. Podem veure
+la davallada important que va haver-hi en matemàtiques l'any 2016.
+
+
+
+```{r}
+# Carregar las librerías necesarias
+
+# Carregar el dataset
+
+# Calcular las medias de las notas por tipo de centro
+medias_centro <- dataset %>%
+  group_by(NATURALESA) %>%
+  summarise(PCAT = mean(PCAT, na.rm = TRUE),
+            PCAST = mean(PCAST, na.rm = TRUE),
+            PANG = mean(PANG, na.rm = TRUE),
+            PCIEN = mean(PCIEN, na.rm = TRUE),
+            PMAT = mean(PMAT, na.rm = TRUE))
+
+# Transformar los datos a formato largo
+medias_centro_long <- medias_centro %>%
+  pivot_longer(cols = c("PCAT", "PCAST", "PANG", "PCIEN", "PMAT"), 
+               names_to = "Asignatura", values_to = "Media")
+
+# Crear el gráfico de barras comparativas
+ggplot(medias_centro_long, aes(x = Asignatura, y = Media, fill = NATURALESA)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Comparación del Rendimiento por Tipo de Centro en Diferentes Áreas",
+       x = "Asignatura",
+       y = "Media de las Notas",
+       fill = "Tipo de Centro") +
+  theme_minimal()
+
+
+
+
+```
+
+
+
+
+```{r}
+
+# Carregar el dataset
+
+# Calcular las medias de las notas por tipo de centro
+medias_centro <- dataset %>%
+  group_by(NATURALESA) %>%
+  summarise(PCAT = mean(PCAT, na.rm = TRUE),
+            PCAST = mean(PCAST, na.rm = TRUE),
+            PANG = mean(PANG, na.rm = TRUE),
+            PCIEN = mean(PCIEN, na.rm = TRUE),
+            PMAT = mean(PMAT, na.rm = TRUE))
+
+# Calcular la diferencia de puntuación promedio entre centros públicos y privados
+diferencias_promedio <- medias_centro %>%
+  summarise(PCAT = diff(PCAT),
+            PCAST = diff(PCAST),
+            PANG = diff(PANG),
+            PCIEN = diff(PCIEN),
+            PMAT = diff(PMAT))
+
+# Transformar los datos a formato largo para visualizarlos
+diferencias_promedio_long <- diferencias_promedio %>%
+  pivot_longer(cols = everything(), names_to = "Asignatura", values_to = "Diferencia")
+
+# Crear el gráfico de KPI
+ggplot(diferencias_promedio_long, aes(x = Asignatura, y = Diferencia, fill = Asignatura)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Diferencia de Puntuación Promedio entre Centros Públicos y Privados",
+       x = "Asignatura",
+       y = "Diferencia de Puntuación Promedio") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+```
+
+
+#Avaluació de cada compoent de les notes
+
+Cada nota està formada per diferents components. Podrem trobar una explicació 
+en el resultat global de l'assignatura i avaluem cada compoenent per separat.
+
+
+
+```{r}
+
+# Carregar les llibreries necessàries
+
+# Carregar el d
+# Calcular les mitjanes anuals per a cada component de PCAT
+mitjanes_anuals_PCAT <- dataset %>%
+  group_by(ANY) %>%
+  summarise(PCAT_CL = mean(PCAT_CL, na.rm = TRUE),
+            PCAT_EE = mean(PCAT_EE, na.rm = TRUE))
+
+# Crear el gràfic de línies per a les components de PCAT
+ggplot(mitjanes_anuals_PCAT, aes(x = ANY)) +
+  geom_line(aes(y = PCAT_CL, color = "PCAT_CL")) +
+  geom_line(aes(y = PCAT_EE, color = "PCAT_EE")) +
+  labs(title = "Evolució de les Components de PCAT al llarg dels Anys",
+       x = "Any",
+       y = "Mitjana de les Notes",
+       color = "Component") +
+  theme_minimal()
+
+# Calcular les mitjanes anuals per a cada component de PCAST
+mitjanes_anuals_PCAST <- dataset %>%
+  group_by(ANY) %>%
+  summarise(PCAST_CL = mean(PCAST_CL, na.rm = TRUE),
+            PCAST_EE = mean(PCAST_EE, na.rm = TRUE))
+
+# Crear el gràfic de línies per a les components de PCAST
+ggplot(mitjanes_anuals_PCAST, aes(x = ANY)) +
+  geom_line(aes(y = PCAST_CL, color = "PCAST_CL")) +
+  geom_line(aes(y = PCAST_EE, color = "PCAST_EE")) +
+  labs(title = "Evolució de les Components de PCAST al llarg dels Anys",
+       x = "Any",
+       y = "Mitjana de les Notes",
+       color = "Component") +
+  theme_minimal()
+
+# Calcular les mitjanes anuals per a cada component de PANG
+mitjanes_anuals_PANG <- dataset %>%
+  group_by(ANY) %>%
+  summarise(PANG_CL = mean(PANG_CL, na.rm = TRUE),
+            PANG_EE = mean(PANG_EE, na.rm = TRUE),
+            PANG_CO = mean(PANG_CO, na.rm = TRUE))
+
+# Crear el gràfic de línies per a les components de PANG
+ggplot(mitjanes_anuals_PANG, aes(x = ANY)) +
+  geom_line(aes(y = PANG_CL, color = "PANG_CL")) +
+  geom_line(aes(y = PANG_EE, color = "PANG_EE")) +
+  geom_line(aes(y = PANG_CO, color = "PANG_CO")) +
+  labs(title = "Evolució de les Components de PANG al llarg dels Anys",
+       x = "Any",
+       y = "Mitjana de les Notes",
+       color = "Component") +
+  theme_minimal()
+
+# Calcular les mitjanes anuals per a cada component de PMAT
+mitjanes_anuals_PMAT <- dataset %>%
+  group_by(ANY) %>%
+  summarise(PMAT = mean(PMAT, na.rm = TRUE),
+            PMAT_EFM = mean(PMAT_EFM, na.rm = TRUE),
+            PMAT_CR = mean(PMAT_CR, na.rm = TRUE),
+            PMAT_EST = mean(PMAT_EST, na.rm = TRUE),
+            PMAT_NC = mean(PMAT_NC, na.rm = TRUE))
+
+# Crear el gràfic de línies per a les components de PMAT
+ggplot(mitjanes_anuals_PMAT, aes(x = ANY)) +
+  geom_line(aes(y = PMAT, color = "PMAT")) +
+  geom_line(aes(y = PMAT_EFM, color = "PMAT_EFM")) +
+  geom_line(aes(y = PMAT_CR, color = "PMAT_CR")) +
+  geom_line(aes(y = PMAT_EST, color = "PMAT_EST")) +
+  geom_line(aes(y = PMAT_NC, color = "PMAT_NC")) +
+  labs(title = "Evolució de les Components de PMAT al llarg dels Anys",
+       x = "Any",
+       y = "Mitjana de les Notes",
+       color = "Component") +
+  theme_minimal()
+
+```
+
+
+Per exemple, es pot veure que en el cas d'ANGLÈS, la component que te pitjor comportament 
+és PANG_EE (expressió escrita) i, per tant, s'hauria de posar més recursos 
+en treballar aquesta component
+
+## Conclusió
+
+1. Millor rendiment en centres privats que en públics
+2. Mateixa tendència en evolució dels resultats tant en públics com en privats
+3. Continua havent un millot rendiment en general en assignatures de "lletres" per 
+a les noies, i de "ciències" per als nois
+
+
+```{r}
+dades <- df
+
+# Seleccionar les assignatures rellevants i altres columnes
+dades_seleccionades <- dades %>% select(TIPUS_CENTRE = NATURALESA, GENERE, PCAT, PCAST, PANG, PCIEN, PFRAN, PALE, PMAT)
+
+# Calcular les mitjanes per tipus de centre i gènere per a cada assignatura
+mitjanes_centre_genere <- dades_seleccionades %>%
+  group_by(TIPUS_CENTRE, GENERE) %>%
+  summarise(across(PCAT:PMAT, ~ mean(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = PCAT:PMAT, names_to = "Assignatura", values_to = "Mitjana")
+
+# Crear la taula
+taula_resultats <- mitjanes_centre_genere %>%
+  pivot_wider(names_from = "Assignatura", values_from = "Mitjana")
+
+# Mostrar la taula
+print(taula_resultats)
+
+```
+
